@@ -8,7 +8,7 @@ def dsoconfig_factory():
         "task": {
             "task_type": "regression",
             # "function_set": ["potential"],  # Koza
-            "function_set": ["add", "sub", "mul", "sin", "cos", "n2"]  # Koza
+            "function_set": ["add", "sub", "mul", "n2"]  # Koza
         },
         "training": {
             "n_samples": 2000000,

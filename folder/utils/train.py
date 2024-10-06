@@ -1471,7 +1471,7 @@ def optomize_at_test(
 
         ## Sort gp programs by reward and select the top 50 programs
         
-        gp_collection_reward = np.array([gp_p.update_r() for gp_p in gp_collection])
+        gp_collection_reward = np.array([gp_p.r for gp_p in gp_collection])
         gp_ratio = config["gp_meld"]["train_n"] / len(gp_collection)
         gp_quantile = np.quantile(gp_collection_reward, 1 - gp_ratio, interpolation="higher")  # pyright: ignore
         gp_keep = gp_collection_reward >= gp_quantile
