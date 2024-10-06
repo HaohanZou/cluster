@@ -1490,7 +1490,7 @@ def optomize_at_test(
             deap_lengths = np.array([min(len(p.traversal), controller.max_length) for p in gp_collection], dtype=np.int32)
             deap_r = np.array([p.r for p in gp_collection])
             deap_on_policy = np.array([p.originally_on_policy for p in gp_collection])
-            deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(config["gp_meld"]["train_n"], 1).cpu().numpy()
+            deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(len(gp_collection), 1).cpu().numpy()
             deap_tgt_train = np.array([])
             
             '''
