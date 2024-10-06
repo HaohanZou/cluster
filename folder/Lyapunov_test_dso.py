@@ -457,8 +457,8 @@ def top_main(
         '''
     if model == "TransformerTreeEncoderController":
         config["state_manager"]["embedding"] = True
-        config["state_manager"]["embedding_size"] =64  # 64 also good
-        config["controller"]["num_units"] = 64
+        config["state_manager"]["embedding_size"] = 128  # 64 also good
+        config["controller"]["num_units"] = 128
         controller = TransformerTreeEncoderController(
             prior,
             test_task.library,

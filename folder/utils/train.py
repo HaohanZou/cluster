@@ -3072,7 +3072,7 @@ def pgd_check(sympy, X):
     
     sympy_torch = sympytorch.SymPyModule(expressions=[sympy]).to("cuda")
     data = torch.rand((X.shape[0], X.shape[1])).to("cuda")
-    result = pgd_attack(data, sympy_torch, 0.8, steps=30, lower_boundary=torch.tensor([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]).to("cuda:"), upper_boundary=torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).to("cuda"), direction="minimize")
+    result = pgd_attack(data, sympy_torch, 0.8, steps=30, lower_boundary=torch.tensor([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]).to("cuda"), upper_boundary=torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).to("cuda"), direction="minimize")
     result = torch.clamp(result, -1.0, 1.0)
     evaluation = sympy_torch(x1 = result[:,[0]], x2 = result[:,[1]], x3 = result[:,[2]], x4 = result[:,[3]], x5 = result[:,[4]], x6 = result[:,[5]], x7 = result[:,[6]], x8 = result[:,[7]]).squeeze(1).squeeze(1)
     result = result[evaluation < - 1e-15]
