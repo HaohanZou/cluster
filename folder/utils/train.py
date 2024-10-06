@@ -1297,16 +1297,16 @@ def optomize_at_test(
                     counter_example = j[1]
 
 
-        if len(counter_example) > 50000:
-            random_ind = np.random.randint(0, len(counter_example), 50000)
+        if len(counter_example) > 80000:
+            random_ind = np.random.randint(0, len(counter_example), 80000)
             counter_example = counter_example[random_ind]
         
         if len(counter_example) > 0:
             
             Program.task.X_test = np.vstack((Program.task.X_test, counter_example))
 
-            if  len(Program.task.X_test) > 100000:
-                random_ind = np.random.randint(0, Program.task.X_test.shape[0], 100000)
+            if  len(Program.task.X_test) > 160000:
+                random_ind = np.random.randint(0, Program.task.X_test.shape[0], 160000)
                 Program.task.X_test = Program.task.X_test[random_ind]
 
         Program.task.y_test = np.zeros(Program.task.X_test.shape[0])
@@ -2783,7 +2783,7 @@ def find_root(func):
     res_success = True
     return root, res_success
 
-def counter_exp_finder_deri(root1, func1, root2, func2, num=500):
+def counter_exp_finder_deri(root1, func1, root2, func2, num=700):
     counter_example = []
     pd_counter_example = []
     # distance = np.linspace(np.array([-0.5,-0.5, -0.5]),np.array([0.5,0.5, 0.5]),num)

@@ -171,10 +171,10 @@ prior:
     'on': true
 gp_meld:
   run_gp_meld: true
-  generations: 25
+  generations: 15
   p_crossover: 0.5
   p_mutate: 0.5
-  tournament_size: 5
+  tournament_size: 4
   train_n: 50
   mutate_tree_max: 3
 
