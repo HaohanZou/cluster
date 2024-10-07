@@ -1280,7 +1280,7 @@ def optomize_at_test(
         writer.add_scalar("Loss/train", quantile_ver, epoch)
 
         print(f"Number of Programs for Minimization: {len(p_train_ver)}")
-        with mp.Pool(processes= mp.cpu_count(), initializer=init_worker) as pool:
+        with mp.Pool(processes= mp.cpu_count() // 2, initializer=init_worker) as pool:
             counter_example_splits = pool.map(check_options, [i.sympy_expr[0] for i in p_train_ver])
             # counter_example_splits = pool.starmap(pgd_check, [(i.sympy_expr[0], Program.task.X_test) for i in p_train])
 
