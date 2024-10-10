@@ -29,7 +29,7 @@ pip install -e ./src/
 cd ../..
 
 # Optional. For library development, install developement dependencies.
-# pip install -r requirements.txt
+pip install -r requirements.txt
 pip install matplotlib==3.7.3
 pip install numpy==1.23.1
 pip install numba==0.56.2

@@ -1021,7 +1021,7 @@ class TransformerTreeEncoderController(nn.Module):
         token_eqs = torch.ones((1, batch_size), dtype=torch.int32).to(DEVICE) * self.sos_token
         actions = actions.to(torch.int32).to(DEVICE)
         token_eqs = torch.cat((token_eqs, actions.permute(1,0)), 0)
-        inverse_prop = (1/(1-(rewards-0.1))).to(torch.float32).to(DEVICE)
+        inverse_prop = (1/(1-(rewards-1))).to(torch.float32).to(DEVICE)
 
         # Get initial prior
         initial_prior = torch.from_numpy(self.prior.initial_prior()).to(DEVICE)

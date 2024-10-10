@@ -899,7 +899,6 @@ def optomize_at_test(
     run_gp_meld = gp_controller is not None
     controller.rl_weight = 1.0
     eval_all = True
-    writer = SummaryWriter("runs/8d")
 
     total_unique_set = set()
 
@@ -1065,7 +1064,7 @@ def optomize_at_test(
             ## pgd collection for each program
                 print("\n================PGD Collection Starts=========================\n")
                 pgd_initial = torch.rand(Program.task.X_train.shape[0] // 10, Program.task.X_train.shape[1])
-                with mp.Pool(processes= mp.cpu_count(), initializer=init_worker) as pool:
+                with mp.Pool(processes= 2, initializer=init_worker) as pool:
                     pgd_output = pool.starmap(pgd_check, [(i.sympy_expr[0], pgd_initial) for i in programs if (not i.invalid)])
 
                 pgd_example = []
@@ -1196,7 +1195,7 @@ def optomize_at_test(
 
             else:  # Empirical quantile
                 quantile = np.quantile(r, 1 - epsilon, interpolation="higher")  # pyright: ignore
-                quantile_ver = np.quantile(r, 1 - epsilon_r, interpolation="higher")
+                quantile_ver = np.quantile(r, 1 - epsilon_r , interpolation="higher")
 
             # These guys can contain the GP solutions if we run GP
             """
@@ -1276,10 +1275,9 @@ def optomize_at_test(
         result['best'].append(r_max)
         result['quantile'].append(quantile)
 
-        writer.add_scalar("Loss/train", quantile_ver, epoch)
 
         print(f"Number of Programs for Minimization: {len(p_train_ver)}")
-        with mp.Pool(processes= 2, initializer=init_worker) as pool:
+        with mp.Pool(processes= mp.cpu_count(), initializer=init_worker) as pool:
             counter_example_splits = pool.map(check_options, [i.sympy_expr[0] for i in p_train_ver])
             # counter_example_splits = pool.starmap(pgd_check, [(i.sympy_expr[0], Program.task.X_test) for i in p_train])
 
