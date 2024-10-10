@@ -34,5 +34,4 @@ pip install matplotlib==3.7.3
 pip install sympytorch
 y | mamba install -c conda-forge tensorboard
 
-python Lyapunov_test_dso.py
 
