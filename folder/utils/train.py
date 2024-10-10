@@ -20,7 +20,6 @@ import sympytorch
 import torch.optim.lr_scheduler as lr_scheduler
 import csv
 import timeit
-from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import scipy

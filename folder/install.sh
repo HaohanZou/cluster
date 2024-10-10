@@ -32,6 +32,5 @@ cd ../..
 # pip install -r requirements.txt
 pip install matplotlib==3.7.3
 pip install sympytorch
-yes | mamba install -c conda-forge tensorboard
 
 
