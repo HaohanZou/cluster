@@ -1280,7 +1280,7 @@ def optomize_at_test(
         writer.add_scalar("Loss/train", quantile_ver, epoch)
 
         print(f"Number of Programs for Minimization: {len(p_train_ver)}")
-        with mp.Pool(processes= mp.cpu_count() // 2, initializer=init_worker) as pool:
+        with mp.Pool(processes= 2, initializer=init_worker) as pool:
             counter_example_splits = pool.map(check_options, [i.sympy_expr[0] for i in p_train_ver])
             # counter_example_splits = pool.starmap(pgd_check, [(i.sympy_expr[0], Program.task.X_test) for i in p_train])
 
@@ -1360,10 +1360,15 @@ def optomize_at_test(
                     print(f"Number of valid equations: {np.sum(success)}. Program should stopped")
                     print(p_final.sympy_expr[0])
                     print([programs[i].sympy_expr[0] for i in range(len(success)) if success[i]])
+
+                    log_and_print(f"Number of valid equations: {np.sum(success)}. Program should stopped")
+                    log_and_print(p_final.sympy_expr[0])
+                    log_and_print([programs[i].sympy_expr[0] for i in range(len(success)) if success[i]])
                 else:
                     print(f"Number of potential valid equations: {np.sum(success)}")
             else:
                 print(f"\n============None of the candidates fulfill the conditions. Training CONTINUES!=================\n")
+                log_and_print(f"\n============None of the candidates fulfill the conditions. Training CONTINUES!=================\n")
         
         
         
@@ -2934,9 +2939,9 @@ def final_check(sympy_expr):
     if not pgd_check_result:
         return False
 
-    num_points = 10 ** 7
+    num_points = 10 ** 6
     # pool_1 = None
-    for i in range(5):
+    for i in range(10):
         # data = np.random.uniform(-1.0, 1.0, (1 * 10 ** 7, 6))
 
         boundary_points = []
