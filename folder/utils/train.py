@@ -40,6 +40,7 @@ from torch.multiprocessing import (  # pylint: disable=unused-import  # noqa: F4
     get_logger,
 )
 from torch.nn.utils.rnn import pad_sequence
+# from utils.variable_gradient.util import neural_value
 
 # from datasets import generate_train_and_val_functions
 
@@ -984,9 +985,14 @@ def optomize_at_test(
         print("-- RUNNING EPOCHS START -------------")
 
     optimizer = torch.optim.Adam(controller.parameters(), lr=controller.learning_rate)
-    # scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1)
+    # optimizer = torch.optim.AdamW(controller.parameters(), lr=controller.learning_rate, weight_decay=1e-2) 
+    # scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, T_mult=1, eta_min=controller.learning_rate * 0.25)
+    # decay_step = 15
+    # decay_factor = 0.9
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=decay_step, gamma=decay_factor)
 
     result = {"best": [], "quantile": [], "baseline": []}
+    total_time_track = {"Decoder": 0, "Reward": 0, "SHGO": 0}
 
     if pre_train:
         # X_train = torch.from_numpy(Program.task.X_train).to(torch.float32).to(DEVICE)
@@ -1001,12 +1007,16 @@ def optomize_at_test(
     else:
         data_to_encode = None
     gp_collection = []
+    # supervised learning setting
+    prev = -1
+    sp_weight = 1
     for epoch in range(n_epochs):
         t0 = time.time()
 
         # Set of str representations for all Programs ever seen
         s_history = set(r_history.keys() if Program.task.stochastic else Program.cache.keys())
 
+        time_decoder_start = timeit.default_timer()
         # Sample batch of Programs from the Controller
         # Shape of actions: (batch_size, max_length)
         # Shape of obs: [(batch_size, max_length)] * 3
@@ -1014,13 +1024,24 @@ def optomize_at_test(
         actions, obs, priors = controller.sample(batch_size, data_to_encode)
         programs = [from_tokens(a) for a in actions]
         nevals += batch_size
+        time_decoder_end = timeit.default_timer()
+        total_time_track['Decoder'] += (time_decoder_end - time_decoder_start)
 
         ## GP elite samples will be added to policy gradient
 
         # Run GP seeded with the current batch, returning elite samples
-        Program.task.X_train, Program.task.y_train= torch.from_numpy(Program.task.X_train).to("cuda"), torch.from_numpy(Program.task.y_train).to("cuda")
+        # Program.task.X_train = torch.from_numpy(Program.task.X_train).to("cuda")
+        # Program.task.y_train = neural_value('checkpoint_epoch_10000.pt', Program.task.X_train, "cuda:1")
+        # Program.task.y_train = torch.from_numpy(Program.task.y_train).to("cuda")
+        # change 2
+        # Program.task.mse_weight = 0.1 if epoch < 20 else max(0, 0.2 - epoch * 0.005)
+        # Program.task.mse_weight = 0.1 if epoch < 40 else max(0, 0.2 - epoch * 0.0025)
         start = timeit.default_timer() 
-        
+        if ((epoch + 5) % 10 == 0) and (False):
+            run_gp_meld = True
+        else:
+            run_gp_meld = False
+
         if run_gp_meld:
             deap_programs, deap_actions, deap_obs, deap_priors = gp_controller(actions)
             nevals += gp_controller.nevals
@@ -1033,21 +1054,21 @@ def optomize_at_test(
         end = timeit.default_timer()
 
         ## Aggregate deap result
+        if run_gp_meld:
+            if len(gp_collection) == 0:
+                gp_collection = deap_programs
+                gp_collection_actions = deap_actions
+                gp_collection_obs = deap_obs
+                gp_collection_priors = deap_priors
+            else:
+                gp_collection = gp_collection + deap_programs
+                gp_collection_actions = np.append(gp_collection_actions, deap_actions, axis = 0)
+                gp_collection_obs = np.append(gp_collection_obs, deap_obs, axis = 0)
+                gp_collection_priors = np.append(gp_collection_priors, deap_priors, axis = 0)
         
-        if len(gp_collection) == 0:
-            gp_collection = deap_programs
-            gp_collection_actions = deap_actions
-            gp_collection_obs = deap_obs
-            gp_collection_priors = deap_priors
-        else:
-            gp_collection = gp_collection + deap_programs
-            gp_collection_actions = np.append(gp_collection_actions, deap_actions, axis = 0)
-            gp_collection_obs = np.append(gp_collection_obs, deap_obs, axis = 0)
-            gp_collection_priors = np.append(gp_collection_priors, deap_priors, axis = 0)
-        
-        print(end - start)
+        log_and_print(f"Genetic Porgramming Runtime {end - start}")
         pool = None
-        Program.task.X_train, Program.task.y_train = Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
+        # Program.task.X_train, Program.task.y_train = Program.task.X_train.cpu().detach().numpy(), Program.task.y_train
         # Compute rewards in parallel
         if pool is not None:
             # Filter programs that need reward computing
@@ -1059,12 +1080,13 @@ def optomize_at_test(
         
         temp = Program.task.X_train
         
+        # change 3
         if (epoch > (-1)):
             if True:
             ## pgd collection for each program
                 print("\n================PGD Collection Starts=========================\n")
-                pgd_initial = torch.rand(Program.task.X_train.shape[0] // 10, Program.task.X_train.shape[1])
-                with mp.Pool(processes= 2, initializer=init_worker) as pool:
+                pgd_initial = torch.rand(Program.task.X_train.shape[0] // 100, Program.task.X_train.shape[1])
+                with mp.Pool(processes= 10, initializer=init_worker) as pool:
                     pgd_output = pool.starmap(pgd_check, [(i.sympy_expr[0], pgd_initial) for i in programs if (not i.invalid)])
 
                 pgd_example = []
@@ -1075,7 +1097,7 @@ def optomize_at_test(
                         else:
                             pgd_example = j[1]
 
-                ratio = min((epoch) * 0.005 + 0.1, 0.3)
+                ratio = 0.2
                 if len(pgd_example) > Program.task.X_train.shape[0] * ratio:
                     random_ind = np.random.randint(0, len(pgd_example), int(np.floor(Program.task.X_train.shape[0] * ratio)))
                     print(random_ind.shape)
@@ -1083,18 +1105,21 @@ def optomize_at_test(
                 if len(pgd_example) > 0:
                     Program.task.X_train = np.vstack((Program.task.X_train, pgd_example))
                     Program.task.y_train = np.zeros(Program.task.X_train.shape[0])
+                    # Program.task.y_train = np.vstack((Program.task.y_train, neural_value('checkpoint_epoch_10000.pt', torch.from_numpy(pgd_example).to("cuda:1"), "cuda:1")))
                 print(f"\n==============Collect {len(pgd_example)} Examples ===================\n")
         
         
         # Compute rewards (or retrieve cached rewards)
-        Program.task.X_train, Program.task.y_train= torch.from_numpy(Program.task.X_train).to("cuda"), torch.from_numpy(Program.task.y_train).to("cuda")
+        # Program.task.X_train = torch.from_numpy(Program.task.X_train).to("cuda")
+        # Program.task.y_train = neural_value('checkpoint_epoch_10000.pt', Program.task.X_train, "cuda:1")
         # r = np.array([p.r for p in programs])
-        start = timeit.default_timer()
+        time_reward_start = timeit.default_timer()
         r = np.array([p.update_r() for p in programs])
         r_train = r
-        end = timeit.default_timer()
-        print(end - start)
+        time_reward_end = timeit.default_timer()
+        total_time_track['Reward'] += time_reward_end - time_reward_start
         
+        del Program.task.X_train, Program.task.y_train
         Program.task.X_train = temp
         Program.task.y_train = np.zeros(Program.task.X_train.shape[0])
         # Program.task.X_train, Program.task.y_train = Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
@@ -1155,7 +1180,12 @@ def optomize_at_test(
         r_raw_sum = np.sum(r)
         r_raw_mean = r.sum() / (r != 0).sum()
 
-        epsilon = max(0.05, 0.2 - int(epoch // 5) * 0.025)
+
+        # change 1
+        # epsilon = max(0.1, 0.3 - int(epoch // 5) * 0.05)
+        # epsilon = max(0.1, 0.5 - int(epoch // 5) * 0.025)
+        epsilon = 0.1
+        # epsilon = max(0.05, 0.1 - (epoch-50)//5 * 0.005)
         epsilon_r = 0.05
 
         """
@@ -1275,11 +1305,13 @@ def optomize_at_test(
         result['best'].append(r_max)
         result['quantile'].append(quantile)
 
-
+        time_shgo_start = timeit.default_timer()
         print(f"Number of Programs for Minimization: {len(p_train_ver)}")
         with mp.Pool(processes= mp.cpu_count(), initializer=init_worker) as pool:
             counter_example_splits = pool.map(check_options, [i.sympy_expr[0] for i in p_train_ver])
             # counter_example_splits = pool.starmap(pgd_check, [(i.sympy_expr[0], Program.task.X_test) for i in p_train])
+        time_shgo_end = timeit.default_timer()
+        total_time_track['SHGO'] = time_shgo_end - time_shgo_start
 
         pool = None
         print(len(counter_example_splits))
@@ -1294,33 +1326,34 @@ def optomize_at_test(
                     counter_example = j[1]
 
 
-        if len(counter_example) > 80000:
-            random_ind = np.random.randint(0, len(counter_example), 80000)
+        if len(counter_example) > 50000:
+            random_ind = np.random.randint(0, len(counter_example), 50000)
             counter_example = counter_example[random_ind]
         
         if len(counter_example) > 0:
             
             Program.task.X_test = np.vstack((Program.task.X_test, counter_example))
 
-            if  len(Program.task.X_test) > 160000:
-                random_ind = np.random.randint(0, Program.task.X_test.shape[0], 160000)
+            if  len(Program.task.X_test) > 100000:
+                random_ind = np.random.randint(0, Program.task.X_test.shape[0], 100000)
                 Program.task.X_test = Program.task.X_test[random_ind]
 
         Program.task.y_test = np.zeros(Program.task.X_test.shape[0])
 
-        '''
-        if epoch % 5 == 0:
-            Program.task.X_train = Program.task.X_test
-            Program.task.y_train = Program.task.y_test
-        '''
-        if epoch % 1 == 0:
 
+        
+        # if epoch % 5 == 0:
+            # Program.task.X_train = Program.task.X_test
+            # Program.task.y_train = Program.task.y_test
+        
+        # if epoch % 1 == 0:
+        if True:
             if epoch == 0:
                 Program.task.X_train = Program.task.X_test
                 Program.task.y_train = Program.task.y_test
             
             else:
-                portion = (min((epoch - (-1)) * 0.004, 0.12))
+                portion = (min((epoch - (-1)) * 0.003, 0.1))
                 
                 add_size = int(portion * Program.task.X_test.shape[0])
                 add_part_ind = np.random.randint(0, Program.task.X_test.shape[0], add_size)
@@ -1362,7 +1395,7 @@ def optomize_at_test(
                     log_and_print(p_final.sympy_expr[0])
                     log_and_print([programs[i].sympy_expr[0] for i in range(len(success)) if success[i]])
                 else:
-                    print(f"Number of potential valid equations: {np.sum(success)}")
+                    log_and_print(f"Number of potential valid equations: {np.sum(success)}")
             else:
                 print(f"\n============None of the candidates fulfill the conditions. Training CONTINUES!=================\n")
                 log_and_print(f"\n============None of the candidates fulfill the conditions. Training CONTINUES!=================\n")
@@ -1456,92 +1489,129 @@ def optomize_at_test(
 
         # wall time calculation for the epoch
         epoch_walltime = time.time() - start_time
-
         torch.save(controller.state_dict(), controller_saved_path)
 
-        print("\n==============Start Supervised Learning==============\n")
+        if any(success) == 0 and (run_gp_meld):
 
-        Program.task.X_train, Program.task.y_train= torch.from_numpy(Program.task.X_train).to("cuda"), torch.from_numpy(Program.task.y_train).to("cuda")
-        ## Supervised Learning from elite programs  
+            print("\n==============Start Supervised Learning==============\n")
 
-        ## freeze encoder parameter
-        # for param in controller.model.dym_embedded_encoder.parameters():
-            # param.requires_grad = False
+            # Program.task.X_train, Program.task.y_train= torch.from_numpy(Program.task.X_train).to("cuda"), torch.from_numpy(Program.task.y_train).to("cuda")
+            ## Supervised Learning from elite programs  
 
-        # for param in controller.model.dym_reduce_dim.parameters():
-            # param.requires_grad = False
+            ## freeze encoder parameter
+            # for param in controller.model.dym_embedded_encoder.parameters():
+                # param.requires_grad = False
 
-        ## Sort gp programs by reward and select the top 50 programs
-        
-        gp_collection_reward = np.array([gp_p.r for gp_p in gp_collection])
-        gp_ratio = config["gp_meld"]["train_n"] / len(gp_collection)
-        gp_quantile = np.quantile(gp_collection_reward, 1 - gp_ratio, interpolation="higher")  # pyright: ignore
-        gp_keep = gp_collection_reward >= gp_quantile
+            # for param in controller.model.dym_reduce_dim.parameters():
+                # param.requires_grad = False
 
-        gp_collection = list(compress(gp_collection, gp_keep))
-        print(np.mean(np.array([gp_p.r for gp_p in gp_collection])))
-        gp_collection_actions = gp_collection_actions[gp_keep]
-        gp_collection_obs = gp_collection_obs[gp_keep]
-        gp_collection_priors = gp_collection_priors[gp_keep]
-        gp_collection_reward = gp_collection_reward[gp_keep]
-        
-        ## optimize decoder structure
-        for super in range(7):
+            ## Sort gp programs by reward and select the top 50 programs
             
+            gp_collection_reward = np.array([(gp_p.task.evaluate(gp_p)["nmse_test"] * (-1) + 1) for gp_p in gp_collection])
+            gp_ratio = (config["gp_meld"]["train_n"] / len(gp_collection)) * 0.6
+            gp_quantile = np.quantile(gp_collection_reward, 1 - gp_ratio, interpolation="higher")  # pyright: ignore
+            gp_keep = gp_collection_reward >= gp_quantile
+
+            gp_collection = list(compress(gp_collection, gp_keep))
+            gp_mean = np.mean(gp_collection_reward[gp_collection_reward >= gp_quantile])
+            log_and_print(f"GP output mean: {gp_mean}")
+            gp_collection_actions = gp_collection_actions[gp_keep]
+            gp_collection_obs = gp_collection_obs[gp_keep]
+            gp_collection_priors = gp_collection_priors[gp_keep]
+            gp_collection_reward = gp_collection_reward[gp_keep]
+            gp_success = np.array([gp_p.task.evaluate(gp_p)["success"] for gp_p in gp_collection])
+            log_and_print(f"GP output success rate: {np.mean(gp_success)}")
+
+            if any(gp_success):
+                # change 5
+                # log_and_print(f"Potential valid equations:{[gp_collection[i].sympy_expr[0] for i in range(len(gp_collection)) if gp_success[i]]}")
+                minimizer_check = [check_options(gp_collection[i].sympy_expr[0] * 1e4)[0] if gp_success[i] else False for i in range(len(gp_success))]
+                overall_check = [final_check(gp_collection[i].sympy_expr[0]) if minimizer_check[i] else False for i in range(len(gp_success))]
+                gp_success_f = overall_check
+                if any(gp_success_f) > 0:
+                    p_final = gp_collection[gp_success_f.index(True)]
+                    log_and_print(f"Number of valid equations: {np.sum(gp_success_f)}. Program should stopped")
+                    log_and_print(p_final.sympy_expr[0])
+                    log_and_print([gp_collection[i].sympy_expr[0] for i in range(len(gp_success_f)) if gp_success_f[i]])
+
+
+            if (gp_mean > prev):
+                prev = gp_mean
+                sp_weight = 1
+            else:
+                sp_weight *= 0.5
+                # sp_weight = max(0.005, sp_weight)
+
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= sp_weight   # Set new learning rate
+
+            print(f"Supervised Learning LR: {sp_weight}")
             
-            deap_lengths = np.array([min(len(p.traversal), controller.max_length) for p in gp_collection], dtype=np.int32)
-            deap_r = np.array([p.r for p in gp_collection])
-            deap_on_policy = np.array([p.originally_on_policy for p in gp_collection])
-            deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(len(gp_collection), 1).cpu().numpy()
-            deap_tgt_train = np.array([])
-            
-            '''
-            deap_lengths = np.array([min(len(p.traversal), controller.max_length) for p in deap_programs], dtype=np.int32)
-            deap_r = np.array([p.r for p in deap_programs])
-            deap_on_policy = np.array([p.originally_on_policy for p in deap_programs])
-            deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(config["gp_meld"]["train_n"], 1).cpu().numpy()
-            deap_tgt_train = np.array([])
-            '''
+            ## optimize decoder structure
+            for super in range(10):
+                
+                
+                deap_lengths = np.array([min(len(p.traversal), controller.max_length) for p in gp_collection], dtype=np.int32)
+                # deap_r = np.array([(p.evaluate['nmse_test'] * (-1) + 1) for p in gp_collection])
+                deap_r = gp_collection_reward
+                deap_on_policy = np.array([p.originally_on_policy for p in gp_collection])
+                deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(len(gp_collection), 1).cpu().numpy()
+                # deap_data_to_encode_train = np.array([])
+                deap_tgt_train = np.array([])
+                
+                '''
+                deap_lengths = np.array([min(len(p.traversal), controller.max_length) for p in deap_programs], dtype=np.int32)
+                deap_r = np.array([p.r for p in deap_programs])
+                deap_on_policy = np.array([p.originally_on_policy for p in deap_programs])
+                deap_data_to_encode_train = data_to_encode.detach()[-1, :].tile(config["gp_meld"]["train_n"], 1).cpu().numpy()
+                deap_tgt_train = np.array([])
+                '''
 
-            # Create the Batch
-            sampled_batch = Batch(
-                actions=gp_collection_actions,
-                obs=gp_collection_obs,
-                priors=gp_collection_priors,
-                lengths=deap_lengths,
-                rewards=deap_r,
-                on_policy=deap_on_policy,
-                data_to_encode=deap_data_to_encode_train,
-                tgt=deap_tgt_train,
-            )
+                # Create the Batch
+                sampled_batch = Batch(
+                    actions=gp_collection_actions,
+                    obs=gp_collection_obs,
+                    priors=gp_collection_priors,
+                    lengths=deap_lengths,
+                    rewards=deap_r,
+                    on_policy=deap_on_policy,
+                    data_to_encode=deap_data_to_encode_train,
+                    tgt=deap_tgt_train,
+                )
 
-            controller.rl_weight = 0.15
+                controller.rl_weight = 1e-3
 
-            # Train the controller
-            controller.train()
-            optimizer.zero_grad()
-            deap_b_train = quantile_ver
-            loss_s, summaries_s = controller.train_loss(deap_b_train, sampled_batch, pqt_batch, test=True)
-            loss_s.backward()
-            torch.nn.utils.clip_grad_norm_(
-                controller.parameters(), gradient_clip)
-            optimizer.step()
+                # Train the controller
+                controller.train()
+                optimizer.zero_grad()
+                deap_b_train = quantile_ver
+                loss_s, summaries_s = controller.train_loss(deap_b_train, sampled_batch, pqt_batch, test=True)
+                loss_s = loss_s * float(sp_weight)
+                loss_s.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    controller.parameters(), gradient_clip)
+                optimizer.step()
 
-            controller.rl_weight = 1
+                controller.rl_weight = 1
 
-        ## Re-open encoder parameter
-        # for param in controller.model.dym_embedded_encoder.parameters():
-            # param.requires_grad = True
 
-        # for param in controller.model.dym_reduce_dim.parameters():
-            # param.requires_grad = True
-            
-        Program.task.X_train, Program.task.y_train= Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
-        print("\n==============End Supervised Learning==============\n")
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] / sp_weight   # Set new learning rate
+
+            ## Re-open encoder parameter
+            # for param in controller.model.dym_embedded_encoder.parameters():
+                # param.requires_grad = True
+
+            # for param in controller.model.dym_reduce_dim.parameters():
+                # param.requires_grad = True
+                
+            # Program.task.X_train, Program.task.y_train= Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
+            print("\n==============End Supervised Learning==============\n")
 
         # Collect sub-batch statistics and write output
         logger.save_stats(
             r_full,
+            quantile,
             l_full,
             actions_full,
             s_full,
@@ -1620,19 +1690,29 @@ def optomize_at_test(
         if True:
             if eval_all and any(success):
                 log_and_print("[{}] Early stopping criteria met; breaking early.".format(get_duration(start_time)))
+
+                for key in total_time_track.keys():
+                    total_time_track[key] = total_time_track[key] / (epoch + 1)
                 
-                with open('test_stats/runtime_result_5.csv', 'w', newline='') as csvfile:
+                with open('test_stats/runtime_result_time.csv', 'w', newline='') as csvfile:
                     # Create a DictWriter object, with fieldnames as the keys of the dictionary
-                    writer = csv.DictWriter(csvfile, fieldnames=result.keys())
+                    writer = csv.DictWriter(csvfile, fieldnames=total_time_track.keys())
     
                     # Write the header (the keys of the dictionary)
                     writer.writeheader()
     
                     # Use zip to combine the lists into rows and write them as rows in the CSV
-                    for row in zip(*result.values()):
-                        writer.writerow(dict(zip(result.keys(), row)))
+                    # for row in zip(*total_time_track.values()):
+                    writer.writerow(dict(zip(total_time_track.keys(), total_time_track.values())))
                 
                 break
+            '''
+            if eval_all and any(gp_success_f):
+                log_and_print("[{}] Early stopping criteria met; breaking early.".format(get_duration(start_time)))
+                break
+
+            '''
+            
                 
             # if early_stopping and p_r_best.evaluate.get("success"):  # pyright: ignore
                 # print("Only Risk Term is Satisfied. But Counter Examples may be Found!")
@@ -1924,128 +2004,7 @@ def compute_val_loss(
         break
     r_avg = r_total / it
     return 1 / r_avg
-    # if epsilon is not None and epsilon < 1.0:  # Empirical quantile
-    #     quantile = np.quantile(
-    #         r, 1 - epsilon, interpolation="higher")
 
-    #     r_raw_sum = np.sum(r)
-    #     r_raw_mean = r.sum() / (r != 0).sum()
-
-    #     # These guys can contain the GP solutions if we run GP
-    #     '''
-    #         Here we get the returned as well as stored programs and properties.
-
-    #         If we are returning the GP programs to the controller, p and r will be exactly the same
-    #         as p_train and r_train. Otherwise, p and r will still contain the GP programs so they
-    #         can still fall into the hall of fame. p_train and r_train will be different and no longer
-    #         contain the GP program items.
-    #     '''
-
-    #     keep = r >= quantile
-    #     l = l[keep]
-    #     s = list(compress(s, keep))
-    #     invalid = invalid[keep]
-
-    #     # Option: don't keep the GP programs for return to controller
-    #     if run_gp_meld and not gp_controller.return_gp_obs:
-    #         '''
-    #             If we are not returning the GP components to the controller, we will remove them from
-    #             r_train and p_train by augmenting 'keep'. We just chop off the GP elements which are indexed
-    #             from batch_size to the end of the list.
-    #         '''
-    #         _r = r[keep]
-    #         _p = list(compress(programs, keep))
-    #         keep[batch_size:] = False
-    #         r_train = r[keep]
-    #         p_train = list(compress(programs, keep))
-
-    #         '''
-    #             These contain all the programs and rewards regardless of whether they are returned to the controller.
-    #             This way, they can still be stored in the hall of fame.
-    #         '''
-    #         r = _r
-    #         programs = _p
-    #     else:
-    #         '''
-    #             Since we are returning the GP programs to the contorller, p and r are the same as p_train and r_train.
-    #         '''
-    #         r_train = r = r[keep]
-    #         p_train = programs = list(compress(programs, keep))
-
-    #     '''
-    #         get the action, observation, priors and on_policy status of all programs returned to the controller.
-    #     '''
-    #     actions = actions[keep, :]
-    #     obs = obs[keep, :, :]
-    #     priors = priors[keep, :, :]
-    #     on_policy = on_policy[keep]
-    # else:
-    #     keep = None
-
-    # r_quantile_sum = np.sum(r)
-    # # Clip bounds of rewards to prevent NaNs in gradient descent
-    # r = np.clip(r, -1e6, 1e6)
-    # r_train = np.clip(r_train, -1e6, 1e6)
-
-    # # Compute baseline
-    # # NOTE: pg_loss = tf.reduce_mean((self.r - self.baseline) * neglogp, name="pg_loss")
-    # if baseline == "ewma_R":
-    #     ewma = np.mean(r_train) if ewma is None else alpha * \
-    #         np.mean(r_train) + \
-    #         (1 - alpha) * ewma
-    #     b_train = ewma
-    # elif baseline == "R_e":  # Default
-    #     ewma = -1
-    #     b_train = quantile
-    # elif baseline == "ewma_R_e":
-    #     ewma = np.min(r_train) if ewma is None else alpha * \
-    #         quantile + (1 - alpha) * ewma
-    #     b_train = ewma
-    # elif baseline == "combined":
-    #     ewma = np.mean(r_train) - quantile if ewma is None else alpha * \
-    #         (np.mean(r_train) - quantile) + \
-    #         (1 - alpha) * ewma
-    #     b_train = quantile + ewma
-
-    # # Compute sequence lengths
-    # lengths = np.array([min(len(p.traversal), controller.max_length)
-    #                     for p in p_train], dtype=np.int32)
-
-    # if data_to_encode is not None:
-    #     if run_gp_meld:
-    #         data_to_encode_train = torch.cat([data_to_encode.detach(), data_to_encode.detach()[-1, :, :].tile(config['gp_meld']['train_n'], 1, 1)])
-    #         if keep is not None:
-    #             data_to_encode_train = data_to_encode_train[keep, :, :].cpu().numpy()
-    #         else:
-    #             data_to_encode_train = data_to_encode_train[:, :, :].cpu().numpy()
-    #     elif keep is not None:
-    #         data_to_encode_train = data_to_encode[keep, :, :].detach(
-    #         ).cpu().numpy()
-    #     else:
-    #         data_to_encode_train = data_to_encode[:, :, :].detach(
-    #         ).cpu().numpy()
-    # else:
-    #     data_to_encode_train = np.array([])
-
-    # # Create the Batch
-    # sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-    #                         lengths=lengths, rewards=r_train, on_policy=on_policy, data_to_encode=data_to_encode_train)
-
-    # # Update and sample from the priority queue
-    # pqt_batch = None
-
-    # # Train the controller
-    # # if pre_train:
-    # #     data_to_encode_all = sampled_data.detach()
-    # # else:
-    # #     data_to_encode_all = data_to_encode
-    # try:
-    #     loss, summaries = controller.train_loss(b_train, sampled_batch, pqt_batch)
-    #     val_loss = loss.item()
-    #     return val_loss
-    # except Exception as e:
-    #     log_and_print('[ERROR] Error {}'.format(str(e)))
-    #     continue
 
 
 def gp_at_test(
@@ -2749,7 +2708,15 @@ def derivative_calculate(v, x1, x2, x3, x4, x5, x6, x7, x8):
     # x7_deri = -x7 + 0.5 * x8
     # x8_deri = -0.5 * x7 - x8 + 0.1 * x2 ** 2
 
-    return ((-1) * (v.diff(x1) * x1_deri + v.diff(x2) * x2_deri + v.diff(x3) * x3_deri + v.diff(x4) * x4_deri+ v.diff(x5) * x5_deri + v.diff(x6) * x6_deri+ v.diff(x7) * x7_deri + v.diff(x8) * x8_deri))#  # # ))#  # + v.diff(x9) * x9_deri+ v.diff(x10) * x10_deri
+    # x1_deri = x4 - (x4 + x5 + x6) / 3
+    # x2_deri = x5 - (x4 + x5 + x6) / 3
+    # x3_deri = x6 - (x4 + x5 + x6) / 3
+
+    # x4_deri = (-2 * x4 - sym.sin(x1-x2) - sym.sin(x1-x3)) * 0.5
+    # x5_deri = (-2 * x5 - sym.sin(-x1+x2) - sym.sin(x2-x3)) * 0.5
+    # x6_deri = (-2 * x6 - sym.sin(-x1+x3) - sym.sin(x3-x2)) * 0.5
+
+    return ((-1) * (v.diff(x1) * x1_deri + v.diff(x2) * x2_deri + v.diff(x3) * x3_deri + v.diff(x4) * x4_deri + v.diff(x5) * x5_deri + v.diff(x6) * x6_deri + v.diff(x7) * x7_deri + v.diff(x8) * x8_deri))# ))# # )#  # + v.diff(x9) * x9_deri+ v.diff(x10) * x10_deri
 
 
 def find_root(func):
@@ -2758,11 +2725,11 @@ def find_root(func):
 
     bounds = Bounds([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
-    result = shgo(func, bounds, n = 1024, iters = 3, sampling_method = "simplicial")
+    result = shgo(func, bounds, n = 2048, iters = 3, sampling_method = "simplicial")
     root = result.x
 
 
-    if abs(root[0]) > 1.5:
+    if abs(root[0]) > 1.0:
         outer_root = True
         outer_root = True
     
@@ -2785,23 +2752,20 @@ def find_root(func):
     res_success = True
     return root, res_success
 
-def counter_exp_finder_deri(root1, func1, root2, func2, num=700):
+def counter_exp_finder_deri(root1, func1, root2, func2, epsilon, num=800):
     counter_example = []
     pd_counter_example = []
     # distance = np.linspace(np.array([-0.5,-0.5, -0.5]),np.array([0.5,0.5, 0.5]),num)
-    distance = np.random.uniform(0, 0.25, (num,8)) # 0.3
-    # for i in distance:
-        # for j in range(len(i)):
-            # i[j] += np.random.randn()
+    distance = np.random.uniform(0, 0.15, (num,8)) # 0.3
 
     distance = np.concatenate((distance,np.random.randn(distance.shape[0],distance.shape[1])*0.01),axis=0)
     for j in range(num*2):
         root1_minus = root1 - distance[j]
         root1_minus = np.clip(root1_minus, -1.0, 1.0)
         root1_plus = root1 + distance[j]
-        root1_plus = np.clip(root1_plus,  -1.0, 1.0)
+        root1_plus = np.clip(root1_plus, -1.0, 1.0)
         root2_minus = root2 - distance[j]
-        root2_minus = np.clip(root2_minus,-1.0, 1.0)
+        root2_minus = np.clip(root2_minus, -1.0, 1.0)
         root2_plus = root2 + distance[j]
         root2_plus = np.clip(root2_plus, -1.0, 1.0)
 
@@ -2811,54 +2775,29 @@ def counter_exp_finder_deri(root1, func1, root2, func2, num=700):
         value4 = func2(root2_plus)
         
         if value1 < 0:
-            '''
-            if np.sum([i == 0 for i in root1_minus]):
-                if value1[0] < 0:
-                    pd_counter_example.append((root1_minus).copy())
-                else:
-                    pd_counter_example.append((root1_minus).copy())
-            '''
+
             pd_counter_example.append((root1_minus).copy())
 
         if value2 < 0:
-            '''
-            if np.sum([i == 0 for i in root1_plus]):
-                if value1[0] < 0:
-                    pd_counter_example.append((root1_plus).copy())
-                else:
-                    pd_counter_example.append((root1_plus).copy())
-            '''
+
             pd_counter_example.append((root1_plus).copy())
         
-        if value3 < - 0:
-            '''
-            if np.sum([i == 0 for i in root2_minus]):
-                if value3 < - 0.0001:
-                    counter_example.append((root2_minus).copy())
-            else:
-                if value3[0] < - 0.0001:
-                    counter_example.append((root2_minus).copy())
-            '''
+        if value3 < -epsilon:
+
             counter_example.append((root2_minus).copy())
-        if value4 < - 0:
-            '''
-            if np.sum([i == 0 for i in root2_plus]):
-                if value4[0] < - 0.0001:
-                    counter_example.append((root2_plus).copy())
-            else:
-                if value4[0] < - 0.0001:
-                    counter_example.append((root2_plus).copy())
-            '''
+        if value4 < -epsilon:
+
             counter_example.append((root2_plus).copy())
     del distance
 
     if func1(root1) < 0:
         pd_counter_example.append(root1.copy())
-    if func2(root2) < 0:
+    if func2(root2) < -epsilon:
         counter_example.append((root2.copy()))
     return counter_example, pd_counter_example
 
-def check_options(sympy_expr):
+## change 4
+def check_options(sympy_expr, epsilon=0):
     
     x1 = sym.symbols('x1')
     x2 = sym.symbols('x2')
@@ -2867,10 +2806,10 @@ def check_options(sympy_expr):
 
     x7, x8, x9, x10 = sym.symbols("x7, x8, x9, x10")
 
-    '''
+    
     if len(list(sympy_expr.free_symbols)) < 6:
         return False, np.array([])
-    '''
+    
 
     origin = float(sympy_expr.evalf(subs = {"x1": 0, "x2": 0, "x3": 0, "x4": 0, "x5": 0, "x6": 0, "x7": 0, "x8": 0}))
     sympy_expr = sympy_expr - origin
@@ -2886,7 +2825,7 @@ def check_options(sympy_expr):
     root_1, root_1_sucs = find_root(function1)
     root_2, root_2_sucs = find_root(function2)
 
-    counter_example, pd = counter_exp_finder_deri(root_1, function1, root_2, function2)
+    counter_example, pd = counter_exp_finder_deri(root_1, function1, root_2, function2, epsilon)
     counter_exp = counter_example
     counter_exp = np.array(counter_exp)
 
@@ -2927,8 +2866,8 @@ def final_check(sympy_expr):
     
     # pgd check
     pgd_check_result = True
-    for i in range(5):
-        valid, counter_exp = pgd_check(sympy_expr, torch.ones((1000000, 8)))
+    for i in range(20):
+        valid, counter_exp = pgd_check(sympy_expr, torch.ones((200000, 8)))
         if not valid:
             pgd_check_result = False
             break
@@ -2936,7 +2875,7 @@ def final_check(sympy_expr):
     if not pgd_check_result:
         return False
 
-    num_points = 10 ** 6
+    num_points = 10 ** 7
     # pool_1 = None
     for i in range(10):
         # data = np.random.uniform(-1.0, 1.0, (1 * 10 ** 7, 6))
@@ -3074,10 +3013,12 @@ def pgd_check(sympy, X):
     
     sympy_torch = sympytorch.SymPyModule(expressions=[sympy]).to("cuda")
     data = torch.rand((X.shape[0], X.shape[1])).to("cuda")
-    result = pgd_attack(data, sympy_torch, 0.8, steps=30, lower_boundary=torch.tensor([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]).to("cuda"), upper_boundary=torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).to("cuda"), direction="minimize")
+    result = pgd_attack(data, sympy_torch, 0.8, steps=100, lower_boundary=torch.tensor([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]).to("cuda"), upper_boundary=torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).to("cuda"), direction="minimize")
     result = torch.clamp(result, -1.0, 1.0)
     evaluation = sympy_torch(x1 = result[:,[0]], x2 = result[:,[1]], x3 = result[:,[2]], x4 = result[:,[3]], x5 = result[:,[4]], x6 = result[:,[5]], x7 = result[:,[6]], x8 = result[:,[7]]).squeeze(1).squeeze(1)
-    result = result[evaluation < - 1e-15]
+    result = result[evaluation < - 1e-10]
+
+    del sympy_torch, data, evaluation
 
     return (len(result) == 0), result.cpu().detach().numpy()
     
@@ -3085,6 +3026,9 @@ def init_worker():
     # Redirect stdout and stderr to suppress print statements in workers
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
+    # logger = multiprocessing.log_to_stderr()
+    # logger.setLevel(logging.ERROR)
+
 
 
 def prepare_encoder_input():
@@ -3093,8 +3037,8 @@ def prepare_encoder_input():
 
     vocab = {'start': 0, 'add': 1, 'mul': 2, 'pow': 3, 'sin': 4, 'cos': 5, '+': 6, '-': 7, 
              '1':8 ,'2':9, '3':10, '4':11, '5':12, '6':13, '7':14, '8':15, '9': 16, '0':17, 
-             'E+0': 18, 'E-1': 19, 'E-2':20, 'E-3':21, "x1":22, 'x2':23, "x3": 24, "x4": 25,
-              "x5": 26, "x6": 27, "x7": 28, "x8": 29, "end": 30}
+             'E+0': 18, 'E-1': 19, 'E-2':20, 'E-3':21, "x1":22, 'x2':23, "x3":24, "x4":25,
+             "x5":26, "x6":27, "x7":28, "x8":29, "end":30}
 
     x1, x2, x3, x4, x5, x6, x7, x8, x9, x10 = sym.symbols("x1, x2, x3, x4, x5, x6, x7, x8, x9, x10")
 
@@ -3104,8 +3048,7 @@ def prepare_encoder_input():
         # -0.5 * x3 - x4]
 
 
-    # f = [
-        # -x1 + 0.5 * x2 - 0.1 * x5 ** 2,
+    # f = [-x1 + 0.5 * x2 - 0.1 * x5 ** 2,
         # -0.5 * x1 - x2,
         # -x3 + 0.5 * x4 - 0.1 * x1 ** 2,
         # -0.5 * x3 - x4,
@@ -3127,33 +3070,41 @@ def prepare_encoder_input():
     # f = [x2,
         # -x1 - (1 - x1 ** 2) * x2]
 
-    f = [
-        -x1 + 0.5 * x2 - 0.1 * x5 ** 2,
-        -0.5 * x1 - x2,
-        -x3 + 0.5 * x4 - 0.1 * x1 ** 2,
-        -0.5 * x3 - x4,
-        -x5 + 0.5 * x6 + 0.1 * x7 ** 2,
-        -0.5 * x5 - x6,
-        -x7 + 0.5 * x8,
-        -0.5 * x7 - x8 - 0.1 * x4 ** 2
-    ]
+    # f = [
+        # -x1 + 0.5 * x2 - 0.1 * x5 ** 2,
+        # -0.5 * x1 - x2,
+        # -x3 + 0.5 * x4 - 0.1 * x1 ** 2,
+        # -0.5 * x3 - x4,
+        # -x5 + 0.5 * x6 + 0.1 * x7 ** 2,
+        # -0.5 * x5 - x6,
+        # -x7 + 0.5 * x8,
+        # -0.5 * x7 - x8 - 0.1 * x4 ** 2
+    # ]
 
     # f = [x2,
         # - 5 * sym.sin(x1) - 0.1 * x2]
 
-    # f = [-x1 + 0.5 * x2 - 0.1 * x7 ** 2,
-         # -0.5 * x1 - x2,
-         # -x3 + 0.5 * x4 + 0.1 * x5 ** 2,
-         # -0.5 * x3 - x4,
-         # -x5 + 0.5 * x6,
-         # -0.5 * x5 - x6,
-         # -x7 + 0.5 * x8,
-         # -0.5 * x7 - x8 + 0.1 * x2 ** 2
-        #  ]
+    f = [-x1 + 0.5 * x2 - 0.1 * x7 ** 2,
+        -0.5 * x1 - x2,
+        -x3 + 0.5 * x4 + 0.1 * x5 ** 2,
+        -0.5 * x3 - x4,
+        -x5 + 0.5 * x6,
+        -0.5 * x5 - x6,
+        -x7 + 0.5 * x8,
+        -0.5 * x7 - x8 + 0.1 * x2 ** 2
+        ]
 
+    
     # f = [x2,
         # - 1 * sym.sin(x1)*sym.cos(x1) - x2 - 1 * sym.sin(x3)*sym.cos(x3),
         # x2 - x3]
+
+    # f = [x4 - (x4 + x5 + x6) * float(1/3),
+        # x5 - (x4 + x5 + x6) * float(1/3),
+        # x6 - (x4 + x5 + x6) * float(1/3),
+        # (x4 * (-2) - sym.sin(x1-x2) - sym.sin(x1-x3)) * 0.5,
+        # (x5 * (-2) - sym.sin(x2-x1) - sym.sin(x2-x3)) * 0.5,
+        # (x6 * (-2) - sym.sin(x3-x1) - sym.sin(x3-x2)) * 0.5]
 
 
     polish_expr = [to_polish_with_encoding(i) for i in f]

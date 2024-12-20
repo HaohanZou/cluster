@@ -70,9 +70,9 @@ conf = get_config()
 conf.exp.seed_runs = 1
 conf.exp.n_cores_task = 1  # 7 if GPU memory is at least 24GB, else tune to be smaller
 conf.exp.seed_start = 7
-conf.exp.baselines = ["Transformer"]
+conf.exp.baselines = ["transformer"]
 # User must specify the benchmark to run:
-conf.exp.benchmark = "fn_d_all_m"  # Possible values ["fn_d_2", "fn_d_5", "l_cd_12", ""fn_d_all"]
+conf.exp.benchmark = "fn_d_all_n"  # Possible values ["fn_d_2", "fn_d_5", "l_cd_12", ""fn_d_all"]
 
 Path("./logs").mkdir(parents=True, exist_ok=True)
 
@@ -400,10 +400,10 @@ def top_main(
 
     # Prepare training parameters
     if learning_rate is None:
-        config["controller"]["learning_rate"] = 0.001  # 0.0001 previous
+        config["controller"]["learning_rate"] = 0.0003  # 0.0001 previous
     else:
-        config["controller"]["learning_rate"] = learning_rate  # 0.0001 previous
-    config["controller"]["entropy_weight"] = 0.01 # 0.003 previous # 0.005 previous
+        config["controller"]["learning_rate"] = 0.0003# learning_rate  # 0.0001 previous
+    config["controller"]["entropy_weight"] = 0.005 # 0.003 previous # 0.005 previous
     config["controller"]["entropy_gamma"] = 0.8 # 0.7 previous  # 0.8 previous
     # config['controller']['entropy_gamma'] = 0.8 # 0.8 previous
     config["state_manager"]["embedding"] = False  # True previous
@@ -457,8 +457,8 @@ def top_main(
         '''
     if model == "TransformerTreeEncoderController":
         config["state_manager"]["embedding"] = True
-        config["state_manager"]["embedding_size"] = 128  # 64 also good
-        config["controller"]["num_units"] = 128
+        config["state_manager"]["embedding_size"] = 64  # 64 also good
+        config["controller"]["num_units"] = 64
         controller = TransformerTreeEncoderController(
             prior,
             test_task.library,
@@ -813,104 +813,6 @@ def seed_all(seed=None):
     np.random.seed(seed)
     random.seed(seed)
 
-'''
-class Node(object):
-    """Basic tree class supporting printing"""
-
-    def __init__(self, val):
-        self.val = val
-        self.children = []
-
-    def __repr__(self):
-        children_repr = ",".join(repr(child) for child in self.children)
-        if len(self.children) == 0:
-            return self.val  # Avoids unnecessary parentheses
-        return "{}({})".format(self.val, children_repr)
-
-
-def parse_expression(expr):
-    """Converts a SymPy expression into a tree structure"""
-    if expr.is_Add:
-        # Handle addition and subtraction as separate operations
-        terms = list(expr.args)
-        root = None
-        while terms:
-            left = terms.pop(0)
-            if terms and terms[0].is_negative:
-                right = terms.pop(0)
-                node = Node("sub")
-                node.children.append(parse_expression(left))
-                node.children.append(parse_expression(-right))
-            else:
-                if root is None:
-                    root = parse_expression(left)
-                if terms:
-                    next_term = terms.pop(0)
-                    if next_term.is_negative:
-                        node = Node("sub")
-                        node.children.append(root)
-                        node.children.append(parse_expression(-next_term))
-                    else:
-                        node = Node("add")
-                        node.children.append(root)
-                        node.children.append(parse_expression(next_term))
-                    root = node
-        return root
-
-    elif expr.is_Mul:
-        # Handle multiplication
-        node = Node("mul")
-        for arg in expr.args:
-            node.children.append(parse_expression(arg))
-        return node
-
-    elif expr.is_Pow:
-        # Handle exponentiation with specific handling for squared terms
-        base, exp = expr.args
-        if exp == 2:
-            node = Node("n2")
-        elif exp == 3:
-            node = Node("n3")
-        elif exp == 4:
-            node = Node("n4")
-        else:
-            node = Node("pow")
-            node.children.append(parse_expression(base))
-            node.children.append(parse_expression(exp))
-        if exp in {2, 3, 4}:
-            node.children.append(parse_expression(base))
-        return node
-
-    elif expr.is_Symbol or expr.is_Number:
-        # Handle symbols and numbers
-        return Node(str(expr))
-
-    else:
-        # Handle other cases (e.g., negative numbers)
-        if expr.is_negative:
-            node = Node("sub")
-            node.children.append(Node("0"))
-            node.children.append(parse_expression(-expr))
-            return node
-
-        raise ValueError(f"Unsupported operation: {expr}")
-
-
-
-def preorder_traversal(tree):
-    """Generate pre-order traversal string of the tree"""
-    def traverse(node):
-        if len(node.children) == 0:
-            return [node.val]
-        result = [node.val]
-        for child in node.children:
-            result.extend(traverse(child))
-        return result
-
-    traversal = traverse(tree)
-    return ",".join(traversal)
-
-'''
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")

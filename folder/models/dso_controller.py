@@ -208,7 +208,7 @@ class DsoController(nn.Module):
 
         # (input_size, hidden_size)
         self.cell = nn.LSTMCell(self.input_dim_size, num_units)
-        # self.cell_2 = nn.LSTMCell(num_units, num_units)
+        self.cell_2 = nn.LSTMCell(num_units, num_units)
         self.linear_out = nn.Linear(num_units, self.n_choices)
 
         self.task = task
@@ -239,13 +239,13 @@ class DsoController(nn.Module):
         hx = torch.zeros(batch_size, self.num_units).to(DEVICE)  # (batch, hidden_size)
         cx = torch.zeros(batch_size, self.num_units).to(DEVICE)
 
-        # hx2 = torch.zeros(batch_size, self.num_units).to(DEVICE)
-        # cx2 = torch.zeros(batch_size, self.num_units).to(DEVICE)
+        hx2 = torch.zeros(batch_size, self.num_units).to(DEVICE)
+        cx2 = torch.zeros(batch_size, self.num_units).to(DEVICE)
         while not all(finished):
             time += 1
             next_hx, next_cx = self.cell(next_input, (hx, cx))
-            # next_hx, next_cx = self.cell_2(next_hx, (hx2, cx2))
-            cell_output = self.linear_out(next_hx)
+            next_hx_2, next_cx_2 = self.cell_2(next_hx, (hx2, cx2))
+            cell_output = self.linear_out(next_hx_2)
             logits = cell_output + prior
             action = torch.distributions.categorical.Categorical(logits=logits).sample()
             actions_ta.append(action)
@@ -272,6 +272,8 @@ class DsoController(nn.Module):
             # Emit zeros and copy forward state for minibatch entries that are finished.
             hx = torch.where(finished.view(-1, 1), hx, next_hx)
             cx = torch.where(finished.view(-1, 1), cx, next_cx)
+            hx2 = torch.where(finished.view(-1, 1), hx2, next_hx_2)
+            cx2 = torch.where(finished.view(-1, 1), cx2, next_cx_2)
             # if any(finished):
             #     pass
 

@@ -81,6 +81,7 @@ class RegressionTask(HierarchicalTask):
         (X, y) data.
         """
         self.X_test = self.y_test = self.y_test_noiseless = None
+        self.mse_weight = 0
         
         # Case 1: Named benchmark dataset (shortcut for Case 2)
         if isinstance(dataset, str) and not dataset.endswith(".csv"):
@@ -189,7 +190,8 @@ class RegressionTask(HierarchicalTask):
     def reward_function(self, p):
 
         # Compute estimated values
-        y_hat = p.execute(self.X_train.cpu().detach().numpy())
+        # y_hat = p.execute(self.X_train.cpu().detach().numpy())
+        y_hat = p.execute(self.X_train)
 
         # For invalid expressions, return invalid_reward
         if p.invalid:
@@ -276,8 +278,16 @@ class RegressionTask(HierarchicalTask):
         # x7_deri = -x7 + 0.5 * x8
         # x8_deri = -0.5 * x7 - x8 + 0.1 * x2 ** 2
 
+        # x1_deri = x4 - (x4 + x5 + x6) * 1/3
+        # x2_deri = x5 - (x4 + x5 + x6) * 1/3
+        # x3_deri = x6 - (x4 + x5 + x6) * 1/3
+
+        # x4_deri = (-2 * x4 - sym.sin(x1-x2) - sym.sin(x1-x3)) * 0.5
+        # x5_deri = (-2 * x5 - sym.sin(-x1+x2) - sym.sin(x2-x3)) * 0.5
+        # x6_deri = (-2 * x6 - sym.sin(-x1+x3) - sym.sin(x3-x2)) * 0.5
+
         deri = p.sympy_expr[0]
-        origin = float(deri.evalf(subs={"x1":0, "x2":0, "x3":0, "x4":0, "x5":0, "x6":0, "x7":0, "x8":0}))
+        origin = float(deri.evalf(subs={"x1":0, "x2":0, "x3":0, "x4": 0, "x5": 0, "x6": 0, "x7": 0, "x8": 0}))
     
         
         # deri = deri.subs(x3, 9.81)
@@ -290,14 +300,20 @@ class RegressionTask(HierarchicalTask):
             # if len(list(lie.free_symbols)) == 0:
                 # lie_result = np.zeros(self.X_train.shape[0]) + 1
             if len(list(lie.free_symbols)) == 0:
-                    if lie.is_positive:
-                        lie_result = np.ones(self.X_train.shape[0]) * 10
-                    else:
-                        lie_result = np.ones(self.X_train.shape[0]) * (-0.5)
+                if lie.is_positive:
+                    lie_result = np.ones(self.X_train.shape[0]) * 10
+                else:
+                    lie_result = np.ones(self.X_train.shape[0]) * (-0.5)
             
-            numpy_v_dot = sympytorch.SymPyModule(expressions=[lie]).to("cuda")
-            lie_result = numpy_v_dot(x1 = self.X_train[:,[0]], x2 = self.X_train[:,[1]], x3 = self.X_train[:,[2]], x4 = self.X_train[:,[3]], x5 = self.X_train[:,[4]], x6 = self.X_train[:,[5]], x7 = self.X_train[:,[6]], x8 = self.X_train[:,[7]]).squeeze(1).squeeze(1).cpu().detach().numpy() * 10
+            # numpy_v_dot = sympytorch.SymPyModule(expressions=[lie]).to("cuda:1")
+            # lie_result = numpy_v_dot(x1 = self.X_train[:,[0]], x2 = self.X_train[:,[1]], x3 = self.X_train[:,[2]], x4 = self.X_train[:,[3]], x5 = self.X_train[:,[4]], x6 = self.X_train[:,[5]]).squeeze(1).squeeze(1).cpu().detach().numpy() * 2
+            numpy_v_dot = lambdify((sym.symbols("x1"), sym.symbols("x2"), sym.symbols("x3"), sym.symbols("x4"), sym.symbols("x5"), sym.symbols("x6"), sym.symbols("x7"), sym.symbols("x8")), lie, "numpy")
+            lie_result = numpy_v_dot(*[self.X_train[:,0], self.X_train[:,1], self.X_train[:,2], self.X_train[:,3], self.X_train[:,4], self.X_train[:,5], self.X_train[:,6], self.X_train[:,7]]) * 5
+
         r = self.metric(lie_result, y_hat-origin)
+        # ratio = np.mean(self.y_train[:,0]) / (np.mean(y_hat) + 1e-3)
+        # r -= (1 - 1 / (1 + np.mean((self.y_train[:,0] - ratio * y_hat)**2)/np.var(self.y_train[:,0]))) * self.mse_weight
+        # r -= (1 - 1 / (1 + np.mean((self.y_train[:,1] - ratio * lie_result / 5)**2)/np.var(self.y_train[:,1]))) * self.mse_weight
 
         # Direct reward noise
         # For reward_noise_type == "r", success can for ~max_reward metrics be
@@ -389,6 +405,14 @@ class RegressionTask(HierarchicalTask):
             # x7_deri = -x7 + 0.5 * x8
             # x8_deri = -0.5 * x7 - x8 + 0.1 * x2 ** 2
 
+            # x1_deri = x4 - (x4 + x5 + x6) / 3
+            # x2_deri = x5 - (x4 + x5 + x6) / 3
+            # x3_deri = x6 - (x4 + x5 + x6) / 3
+
+            # x4_deri = (-2 * x4 - sym.sin(x1-x2) - sym.sin(x1-x3)) * 0.5
+            # x5_deri = (-2 * x5 - sym.sin(-x1+x2) - sym.sin(x2-x3)) * 0.5
+            # x6_deri = (-2 * x6 - sym.sin(-x1+x3) - sym.sin(x3-x2)) * 0.5
+
             deri = p.sympy_expr[0]
             origin = float(deri.evalf(subs={"x1":0, "x2":0, "x3":0, "x4":0, "x5":0, "x6":0, "x7":0, "x8":0}))
 
@@ -478,7 +502,8 @@ def make_regression_metric(name, y_train, *args):
     # func = np.vectorize(lambda x: x if x < 0 else 0)
 
     def relu(x):
-        return np.array([i if i > 0 else 0 for i in x])
+        return x * (x > 0)
+        # return np.array([i if i > 0 else 0 for i in x])
 
     all_metrics = {
 
@@ -530,8 +555,12 @@ def make_regression_metric(name, y_train, *args):
         # Value = 1/(1 + args[0]) when y_hat == mean(y)
         "inv_nrmse": # (lambda y, y_hat: 1 / (1 + args[0] * np.sqrt(np.mean((y - y_hat)**2) / var_y)),
                     # 1),
-                    (lambda y, y_hat: (2.5 * np.mean(relu(-(y_hat-0.05))) + np.mean(relu(y+2.5))) * (-1) + 1,
+                    (lambda y, y_hat: 1 / (1 + (2.5 * np.mean(relu(-(y_hat-0.05))) + np.mean(relu(y+1.0))) * (1)),
                     1),
+                    # (lambda y, y_hat: 1 / (1 + 2 * np.mean(np.exp(-(y_hat-0.05) * 0.01)) + np.mean(np.exp(-(y + 0.1) * 0.01))), 
+                    # 1),
+                    # (lambda y, y_hat: 1 / (1 + (2.0 * np.mean(np.exp(-(y_hat-0.05))) + np.mean(np.exp(y+0.1))) * (0.1)),
+                    # 1),
 
         # Fraction of predicted points within p0*abs(y) + p1 band of the true value
         # Range: [0, 1]
@@ -568,7 +597,7 @@ def make_regression_metric(name, y_train, *args):
         "neglog_mse": -np.log(1 + var_y),
         "inv_mse": 0.0,  # 1/(1 + args[0]*var_y),
         "inv_nmse": 0.0,  # 1/(1 + args[0]),
-        "inv_nrmse": -np.inf,  # 1/(1 + args[0]),
+        "inv_nrmse": 0,  # 1/(1 + args[0]),
         "fraction": 0.0,
         "pearson": 0.0,
         "spearman": 0.0,

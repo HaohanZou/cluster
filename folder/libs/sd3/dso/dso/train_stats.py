@@ -119,6 +119,7 @@ class StatsLogger():
                 # time: time used to learn in this epoch (in seconds)
                 headers = ["r_best",
                            "r_max",
+                           "r_top",
                            "r_avg_full",
                            "r_avg_sub",
                            "l_avg_full",
@@ -161,7 +162,7 @@ class StatsLogger():
             self.cache_output_file = None
             self.token_counter_output_file = None
 
-    def save_stats(self, r_full, l_full, actions_full, s_full, invalid_full, r, l,
+    def save_stats(self, r_full, r_top, l_full, actions_full, s_full, invalid_full, r, l,
                    actions, s, invalid, r_best, r_max, ewma, summaries, epoch, s_history,
                    baseline, epoch_walltime, programs):
         """
@@ -208,6 +209,7 @@ class StatsLogger():
             stats = np.array([[
                 r_best,
                 r_max,
+                r_top,
                 r_avg_full,
                 r_avg_sub,
                 l_avg_full,

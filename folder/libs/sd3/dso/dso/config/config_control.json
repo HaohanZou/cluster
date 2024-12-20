@@ -88,7 +88,7 @@
    // Only the key RNN controller hyperparameters are listed here. See
    // config_common.json for the full list.
    "controller" : {
-      "learning_rate" : 0.001,
+      "learning_rate" : 0.0005,
       "entropy_weight" : 0.01,
       "entropy_gamma" : 0.85
    },

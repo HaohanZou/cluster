@@ -18,6 +18,7 @@ logger = logging.getLogger()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+
 def sequence_mask(lengths, maxlen=None, dtype=torch.bool):
     if maxlen is None:
         maxlen = lengths.max()
@@ -250,9 +251,9 @@ class TransformerCustomEncoderModel(nn.Module):
         # if has_encoder:
             # self.data_encoder = SetEncoder(cfg)
 
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, dim_feedforward=hidden * 4, batch_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, dim_feedforward=hidden * 8, batch_first=True)
         self.dym_embedded_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-        self.dym_reduce_dim = nn.Linear(164, 8)
+        self.dym_reduce_dim = nn.Linear(123, 12)
 
     def generate_square_subsequent_mask(self, sz):
         mask = torch.triu(torch.ones(sz, sz), 1)
@@ -927,8 +928,8 @@ class TransformerTreeEncoderController(nn.Module):
             self.out_dim,
             num_units,
             cfg,
-            enc_layers=4,
-            dec_layers=8,
+            enc_layers=3,
+            dec_layers=6,
             dropout=0,
             input_already_encoded=True,
             output_pdt=self.tgt_padding_token,

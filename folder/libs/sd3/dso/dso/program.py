@@ -220,6 +220,7 @@ class Program(object):
     have_cython = None      # Do we have cython installed
     execute = None          # Link to execute. Either cython or python
     cyfunc = None           # Link to cyfunc lib since we do an include inline
+    mse_weight = 0
 
     def __init__(self, tokens=None, on_policy=True, custom_task=None):
         """

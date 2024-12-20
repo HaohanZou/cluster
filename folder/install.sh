@@ -1,13 +1,13 @@
 # Create a virtual environment with Python 3.9 (here using conda):
-yes | conda create --name dgsr python=3.9
-conda activate dgsr
+# yes | conda create --name dgsr python=3.9
+# conda activate dgsr
 
 # Set up key packaging-related tools:
-pip install --upgrade pip
-pip install "setuptools<58.0.0"  # Required for installing deap==1.3.0
+# pip install --upgrade pip
+# pip install "setuptools<58.0.0"  # Required for installing deap==1.3.0
 
 # Install dependencies:
-yes | mamba install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=12.1 -c pytorch -c nvidia
+# yes | mamba install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=12.1 -c pytorch -c nvidia
 # conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 # ^ Or use the pip alternative torch installation command from https://pytorch.org/get-started/locally/
 # Choose a different version of CUDA or CPU-only, as needed.

@@ -99,16 +99,16 @@
       // RNN architectural hyperparameters.
       "cell" : "lstm",
       "num_layers" : 1,
-      "num_units" : 1024,
+      "num_units" : 512,
       "initializer" : "zeros",
 
       // Optimizer hyperparameters.
-      "learning_rate" : 0.001,
+      "learning_rate" : 0.0005,
       "optimizer" : "adam",
 
       // Entropy regularizer hyperparameters.
       "entropy_weight" : 0.005,
-      "entropy_gamma" : 1.0,
+      "entropy_gamma" : 0.8,
 
       // EXPERIMENTAL: Priority queue training hyperparameters.
       "pqt" : false,

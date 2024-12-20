@@ -8,7 +8,7 @@ def dsoconfig_factory():
         "task": {
             "task_type": "regression",
             # "function_set": ["potential"],  # Koza
-            "function_set": ["add", "sub", "mul", "n2"]  # Koza
+            "function_set": ["add", "sub", "mul", "sin", "cos", "n2"]  # Koza
         },
         "training": {
             "n_samples": 2000000,
@@ -20,7 +20,7 @@ def dsoconfig_factory():
         },
         "controller": {
             # "pqt": False,  # False,
-            "learning_rate": 0.001, # previous 0.0025
+            "learning_rate": 0.0003, # previous 0.0025 # 8d poly 6d all function set: 0.0015
             "entropy_weight": 0.03,
             "entropy_gamma": 0.7,
         },
@@ -32,15 +32,15 @@ def dsoconfig_factory():
             # This can be set very high, but it runs slower.
             # Max value is 1000.
             "length": {
-                "min_": 4,
+                "min_": 16,
                 # "max_": 256,
-                "max_":25,
+                "max_":24,
                 # "max_"- 50,
                 "on": True,
             },
             # Memory sanity value. Have at most 10 optimizable constants.
             # This can be set very high, but it runs rather slow.
-            "repeat": {"tokens": "const", "min_": None, "max_": 10, "on": True},
+            "repeat": {"tokens": "const", "min_": None, "max_": 5, "on": True},
             "inverse": {"on": True},
             "trig": {"on": True},
             "const": {"on": False},
