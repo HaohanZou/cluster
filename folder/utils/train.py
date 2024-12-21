@@ -1086,7 +1086,7 @@ def optomize_at_test(
             ## pgd collection for each program
                 print("\n================PGD Collection Starts=========================\n")
                 pgd_initial = torch.rand(Program.task.X_train.shape[0] // 100, Program.task.X_train.shape[1])
-                with mp.Pool(processes= 10, initializer=init_worker) as pool:
+                with mp.Pool(processes= mp.cpu_count(), initializer=init_worker) as pool:
                     pgd_output = pool.starmap(pgd_check, [(i.sympy_expr[0], pgd_initial) for i in programs if (not i.invalid)])
 
                 pgd_example = []
