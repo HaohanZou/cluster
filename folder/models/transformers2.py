@@ -253,7 +253,7 @@ class TransformerCustomEncoderModel(nn.Module):
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, dim_feedforward=hidden * 8, batch_first=True)
         self.dym_embedded_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-        self.dym_reduce_dim = nn.Linear(123, 12)
+        self.dym_reduce_dim = nn.Linear(164, 12)
 
     def generate_square_subsequent_mask(self, sz):
         mask = torch.triu(torch.ones(sz, sz), 1)
