@@ -1184,9 +1184,9 @@ def optomize_at_test(
         # change 1
         # epsilon = max(0.1, 0.3 - int(epoch // 5) * 0.05)
         # epsilon = max(0.1, 0.5 - int(epoch // 5) * 0.025)
-        epsilon = 0.1
+        epsilon = 0.03
         # epsilon = max(0.05, 0.1 - (epoch-50)//5 * 0.005)
-        epsilon_r = 0.05
+        epsilon_r = 0.02
 
         """
         Apply risk-seeking policy gradient: compute the empirical quantile of

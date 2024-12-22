@@ -584,7 +584,7 @@ def top_main(
     controller.save_true_log_likelihood = save_true_log_likelihood  # pyright: ignore
     controller.true_eq = []  # pyright: ignore
     if use_latest_DSRNG_hyperparameters:
-        config["training"]["batch_size"] = 500 * test_sample_multiplier
+        config["training"]["batch_size"] = 1000 * test_sample_multiplier
         config["training"]["epsilon"] = 0.8
         config["training"]["baseline"] = "ewma_R"
         # config["training"]["baseline"] = "R_e"
