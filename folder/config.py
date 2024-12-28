@@ -34,7 +34,7 @@ def dsoconfig_factory():
             "length": {
                 "min_": 16,
                 # "max_": 256,
-                "max_": 24,
+                "max_": 25,
                 # "max_"- 50,
                 "on": True,
             },

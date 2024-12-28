@@ -20,6 +20,7 @@ import sympytorch
 import torch.optim.lr_scheduler as lr_scheduler
 import csv
 import timeit
+from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import scipy
@@ -1010,6 +1011,7 @@ def optomize_at_test(
     # supervised learning setting
     prev = -1
     sp_weight = 1
+    writer = SummaryWriter('runs/experiment_1')
     for epoch in range(n_epochs):
         t0 = time.time()
 
@@ -1184,9 +1186,9 @@ def optomize_at_test(
         # change 1
         # epsilon = max(0.1, 0.3 - int(epoch // 5) * 0.05)
         # epsilon = max(0.1, 0.5 - int(epoch // 5) * 0.025)
-        epsilon = 0.03
+        epsilon = 0.1
         # epsilon = max(0.05, 0.1 - (epoch-50)//5 * 0.005)
-        epsilon_r = 0.02
+        epsilon_r = 0.03
 
         """
         Apply risk-seeking policy gradient: compute the empirical quantile of
@@ -1607,7 +1609,8 @@ def optomize_at_test(
                 
             # Program.task.X_train, Program.task.y_train= Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
             print("\n==============End Supervised Learning==============\n")
-
+        writer.add_scalar('Reward/best', r_max, epoch)
+        writer.add_scalar('Reward/quantile', quantile_ver, epoch)
         # Collect sub-batch statistics and write output
         logger.save_stats(
             r_full,
@@ -1689,6 +1692,7 @@ def optomize_at_test(
         
         if True:
             if eval_all and any(success):
+                writer.close()
                 log_and_print("[{}] Early stopping criteria met; breaking early.".format(get_duration(start_time)))
 
                 for key in total_time_track.keys():
@@ -1712,8 +1716,6 @@ def optomize_at_test(
                 break
 
             '''
-            
-                
             # if early_stopping and p_r_best.evaluate.get("success"):  # pyright: ignore
                 # print("Only Risk Term is Satisfied. But Counter Examples may be Found!")
                 # log_and_print("[{}] Early stopping criteria met; breaking early.".format(get_duration(start_time)))
