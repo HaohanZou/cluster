@@ -20,7 +20,7 @@ import sympytorch
 import torch.optim.lr_scheduler as lr_scheduler
 import csv
 import timeit
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import scipy
@@ -1011,7 +1011,7 @@ def optomize_at_test(
     # supervised learning setting
     prev = -1
     sp_weight = 1
-    writer = SummaryWriter('runs/experiment_1')
+    # writer = SummaryWriter('runs/experiment_1')
     for epoch in range(n_epochs):
         t0 = time.time()
 
@@ -1609,8 +1609,8 @@ def optomize_at_test(
                 
             # Program.task.X_train, Program.task.y_train= Program.task.X_train.cpu().detach().numpy(), Program.task.y_train.cpu().detach().numpy()
             print("\n==============End Supervised Learning==============\n")
-        writer.add_scalar('Reward/best', r_max, epoch)
-        writer.add_scalar('Reward/quantile', quantile_ver, epoch)
+        # writer.add_scalar('Reward/best', r_max, epoch)
+        # writer.add_scalar('Reward/quantile', quantile_ver, epoch)
         # Collect sub-batch statistics and write output
         logger.save_stats(
             r_full,
@@ -1652,11 +1652,11 @@ def optomize_at_test(
         if epsilon is not None:
             if save_true_log_likelihood:
                 log_and_print(
-                    f"[Test epoch={epoch+1:04d}]  nevals={nevals} \t| train_loss={loss.item():.5f} \t| eqs_invalid %={invalid_percent:.2f} \t| r_best={r_best:.5f} \t| quantile={quantile:.5f} \t| r_quantile_mean={r_quantile_mean:.5f} \t| r_raw_sum={r_raw_sum:.5f} \t|  r_raw_mean={r_raw_mean:.5f} \t| r2={r2:.5f} \t| acc_iid={acc_iid:.5f} \t| acc_ood={acc_ood:.5f} \t| nmse_test={nmse_test} \t| nll={nll} \t| true_equation_set_count={len(total_unique_set)} \t| s/it={time.time() - t0:.5f}"
+                    f"[Test epoch={epoch+1:04d}]  nevals={nevals} \t| train_loss={loss.item():.5f} \t| eqs_invalid %={invalid_percent:.2f} \t| r_best={r_best:.5f} \t| quantile={quantile_ver:.5f} \t| r_quantile_mean={r_quantile_mean:.5f} \t| r_raw_sum={r_raw_sum:.5f} \t|  r_raw_mean={r_raw_mean:.5f} \t| r2={r2:.5f} \t| acc_iid={acc_iid:.5f} \t| acc_ood={acc_ood:.5f} \t| nmse_test={nmse_test} \t| nll={nll} \t| true_equation_set_count={len(total_unique_set)} \t| s/it={time.time() - t0:.5f}"
                 )
             else:
                 log_and_print(
-                    f"[Test epoch={epoch+1:04d}]  nevals={nevals} \t| train_loss={loss.item():.5f} \t| eqs_invalid %={invalid_percent:.2f} \t| r_best={r_best:.5f} \t| quantile={quantile:.5f} \t| r_quantile_mean={r_quantile_mean:.5f} \t| r_raw_sum={r_raw_sum:.5f} \t|  r_raw_mean={r_raw_mean:.5f} \t| r2={r2:.5f} \t| acc_iid={acc_iid:.5f} \t| acc_ood={acc_ood:.5f} \t| nmse_test={nmse_test} \t| true_equation_set_count={len(total_unique_set)} \t| s/it={time.time() - t0:.5f}"
+                    f"[Test epoch={epoch+1:04d}]  nevals={nevals} \t| train_loss={loss.item():.5f} \t| eqs_invalid %={invalid_percent:.2f} \t| r_best={r_best:.5f} \t| quantile={quantile_ver:.5f} \t| r_quantile_mean={r_quantile_mean:.5f} \t| r_raw_sum={r_raw_sum:.5f} \t|  r_raw_mean={r_raw_mean:.5f} \t| r2={r2:.5f} \t| acc_iid={acc_iid:.5f} \t| acc_ood={acc_ood:.5f} \t| nmse_test={nmse_test} \t| true_equation_set_count={len(total_unique_set)} \t| s/it={time.time() - t0:.5f}"
                 )
             if quantile > 0.9:
                 quantile_over_fit_times += 1
